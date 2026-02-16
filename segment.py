@@ -366,7 +366,9 @@ def select_gs_for_phys(dataset : ModelParams,
         ]
     }
 
-    editing_modifier_save_path = os.path.join(ply_editing_dir, "editing_modifier.pkl")
+    obj_name = editing_modifier_dict["objects"][0]["name"].split(",")[0]
+
+    editing_modifier_save_path = os.path.join(ply_editing_dir, f"{obj_name}_editing_modifier.pkl")
     with open(editing_modifier_save_path, "wb") as f:
         pickle.dump(editing_modifier_dict, f)
 
