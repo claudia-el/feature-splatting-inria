@@ -24,16 +24,46 @@ def extract_object(editing_mod_path, ply_path):
     
     editing_dict = load_pkl(editing_mod_path)
     plydata = PlyData.read(ply_path)
-    vertex = plydata['vertex']
+    vertex = plydata['vertex'] #store all points
+
+    #reorganize data into (x,y,z)
+    xyz = np.vstack([
+        vertex["x"],
+        vertex["y"],
+        vertex["z"]
+    ]).T
+
     mask = editing_dict['objects'][0]['affected_gaussian_idx']
 
-    filtered_vertices = vertex[mask]
-    new_element = PlyElement.describe(filtered_vertices, 'vertex')
+    R = np.array(editing_dict["scene"]["ground_R"])
+    T = np.array(editing_dict["scene"]["ground_T"])
 
+    # # Step 1 — Undo scene translation
+    xyz_no_translation = xyz - T
+
+    # # Step 2 — Extract object points
+    obj_xyz = xyz_no_translation[mask]
+
+    R_inv = R.T
+    obj_aligned = (R_inv @ obj_xyz.T).T
+
+    # # Step 3 — Center object
+    center = np.mean(obj_xyz, axis=0)
+    obj_final = obj_xyz - center
+
+    new_vertex = vertex[mask].copy()
+
+    new_vertex["x"] = obj_final[:, 0]
+    new_vertex["y"] = obj_final[:, 1]
+    new_vertex["z"] = obj_final[:, 2]
+
+
+
+
+    new_element = PlyElement.describe(new_vertex, 'vertex')
     object_ply = PlyData([new_element], text=False)
 
     obj_name = editing_dict["objects"][0]["name"].split(",")[0]
-    
     object_ply.write(f"{obj_name}.ply")
 
 def room(editing_mod_path, ply_path):
@@ -66,7 +96,7 @@ if __name__ == "__main__":
         room(args.editing_mod, args.ply)
     
     
-   #extract_object(args.editing_mod, args.ply)
+    extract_object(args.editing_mod, args.ply)
 
 
 
