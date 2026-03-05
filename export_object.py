@@ -21,33 +21,40 @@ def load_pkl(editing_mod_path):
     
 
 def extract_object(editing_mod_path, ply_path):
-    
+
     editing_dict = load_pkl(editing_mod_path)
     plydata = PlyData.read(ply_path)
-    vertex = plydata['vertex'] #store all points
+    vertex = plydata['vertex']
 
-    #reorganize data into (x,y,z)
     xyz = np.vstack([
         vertex["x"],
         vertex["y"],
         vertex["z"]
     ]).T
 
-    mask = editing_dict['objects'][0]['affected_gaussian_idx']
+    mask = np.array(editing_dict['objects'][0]['affected_gaussian_idx'])
 
     R = np.array(editing_dict["scene"]["ground_R"])
     T = np.array(editing_dict["scene"]["ground_T"])
 
-    # # Step 1 — Undo scene translation
-    xyz_no_translation = xyz - T
+    # Remove scene translation
+    xyz = xyz - T
 
-    # # Step 2 — Extract object points
-    obj_xyz = xyz_no_translation[mask]
+    # Extract object
+    obj_xyz = xyz[mask]
 
-    R_inv = R.T
-    obj_aligned = (R_inv @ obj_xyz.T).T
+    # Remove scene rotation
+    obj_xyz = obj_xyz @ R.T
 
-    # # Step 3 — Center object
+    flip_R = np.array([
+        [1, 0, 0],
+        [0, -1, 0],
+        [0, 0, -1]
+    ])
+
+    obj_xyz = obj_xyz @ flip_R.T
+
+    # Center object
     center = np.mean(obj_xyz, axis=0)
     obj_final = obj_xyz - center
 
@@ -56,9 +63,6 @@ def extract_object(editing_mod_path, ply_path):
     new_vertex["x"] = obj_final[:, 0]
     new_vertex["y"] = obj_final[:, 1]
     new_vertex["z"] = obj_final[:, 2]
-
-
-
 
     new_element = PlyElement.describe(new_vertex, 'vertex')
     object_ply = PlyData([new_element], text=False)
@@ -85,10 +89,9 @@ def room(editing_mod_path, ply_path):
 
 
 
-
-
-
 if __name__ == "__main__":
+
+    
     
     args = parse_args()
 

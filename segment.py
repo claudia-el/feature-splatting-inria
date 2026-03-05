@@ -11,6 +11,10 @@ from scipy.spatial.transform import Rotation as R
 import featsplat_editor
 from einops import einsum
 from typing import List
+from plyfile import PlyData, PlyElement
+import pickle
+import os
+
 
 import open3d as o3d
 import time
@@ -372,6 +376,42 @@ def select_gs_for_phys(dataset : ModelParams,
     with open(editing_modifier_save_path, "wb") as f:
         pickle.dump(editing_modifier_dict, f)
 
+
+def rotate(editing_mod_path, ply_path):
+
+    with open(editing_mod_path, "rb") as f:
+        editing_dict = pickle.load(f)
+
+    plydata = PlyData.read(ply_path)
+    vertex = plydata["vertex"]
+
+    xyz = np.vstack([
+        vertex["x"],
+        vertex["y"],
+        vertex["z"]
+    ]).T
+
+    R = np.array(editing_dict["scene"]["ground_R"])
+    T = np.array(editing_dict["scene"]["ground_T"])
+
+    xyz = xyz - T
+    xyz = (R.T @ xyz.T).T
+
+    center = np.mean(xyz, axis=0)
+    xyz = xyz - center
+
+    vertex["x"] = xyz[:, 0]
+    vertex["y"] = xyz[:, 1]
+    vertex["z"] = xyz[:, 2]
+
+    new_element = PlyElement.describe(vertex, "vertex")
+    new_ply = PlyData([new_element], text=False)
+
+    new_ply.write(ply_path)
+
+
+
+
 if __name__ == "__main__":
     # Set up command line argument parser
     parser = ArgumentParser(description="Testing script parameters")
@@ -386,11 +426,18 @@ if __name__ == "__main__":
     parser.add_argument("--inward_bbox_offset", default=99, type=float, help="Offset for selecting particles inward. Recommended value: 99 (no selection) or 0.1 (select some particles)")
     parser.add_argument("--final_noise_filtering", action="store_true")
     parser.add_argument("--interactive_viz", action="store_true")
+
+    parser.add_argument("--ply", type=str, required=True)
+    parser.add_argument("--editing_mod", type=str, required=True)
+
+
     args = get_combined_args(parser)
     print("Rendering " + args.model_path)
 
     fg_obj_list = args.fg_obj_list.split(",")
     bg_obj_list = args.bg_obj_list.split(",")
+
+    rotate(args.editing_mod, args.ply)
 
     select_gs_for_phys(model.extract(args), args.iteration, fg_obj_list, bg_obj_list, args.ground_plane_name,
                   args.threshold, args.object_select_eps, args.inward_bbox_offset, args.final_noise_filtering,
