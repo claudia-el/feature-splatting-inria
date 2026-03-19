@@ -20,33 +20,24 @@ def rotate_scene(ply_path, editing_mod_path):
     R = np.asarray(editing_dict["scene"]["ground_R"])
     T = np.asarray(editing_dict["scene"]["ground_T"])
 
-    flip_R = np.array([
-        [1, 0, 0],
-        [0, -1, 0],
-        [0, 0, -1]
-    ])
-
-    full_R = flip_R @ R
-
-
-    # transform positions
+    # Match the original rotate() exactly
     xyz = xyz - T
-    xyz = xyz @ full_R.T
-    xyz = xyz - np.mean(xyz, axis=0)
+    xyz = (R.T @ xyz.T).T
 
-    # transform quaternions
-    R_scene = Rotation.from_matrix(full_R)
+    center = np.mean(xyz, axis=0)
+    xyz = xyz - center
+
+    # Rotate quaternions using R.T (same rotation applied to positions)
+    R_scene = Rotation.from_matrix(R.T)
     q = np.vstack([vertex["rot_0"], vertex["rot_1"], vertex["rot_2"], vertex["rot_3"]]).T
-    # 3DGS stores (w, x, y, z), scipy expects (x, y, z, w)
     R_gaussians = Rotation.from_quat(q[:, [1, 2, 3, 0]])
     R_new = R_scene * R_gaussians
-    q_new = R_new.as_quat()[:, [3, 0, 1, 2]]  # back to (w, x, y, z)
+    q_new = R_new.as_quat()[:, [3, 0, 1, 2]]
 
-    # transform normals
+    # Rotate normals using R.T
     normals = np.vstack([vertex["nx"], vertex["ny"], vertex["nz"]]).T
-    normals_new = normals @ full_R.T
+    normals_new = (R.T @ normals.T).T
 
-    # write output
     new_vertex = np.empty(len(vertex), dtype=vertex.data.dtype)
     new_vertex[:] = vertex.data
 
