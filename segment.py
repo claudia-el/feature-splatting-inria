@@ -97,19 +97,35 @@ def select_gs_for_phys(dataset : ModelParams,
 
     start_cp = time.time()
     fg_obj_bbox = clip_segmeter.fast_compute_rough_bbox(fg_obj_list)  # (2, 3)
+    
+    # fg_obj_bbox[0] = np.maximum(fg_obj_bbox[0], np.array([-2.0,  1.0, -2.0]))
+    # fg_obj_bbox[1] = np.minimum(fg_obj_bbox[1], np.array([ 2.0,  4.0,  3.0]))
 
     # Draw bbox
     if interactive_viz:
-        print(bcolors.WARNING + "Check if the desired object is inside the bounding box" + bcolors.ENDC)
-        input("Press enter to continue")
         scene_pcd = o3d.geometry.PointCloud()
         scene_pcd.points = o3d.utility.Vector3dVector(gaussians.get_xyz.cpu().numpy())
 
-        center = (fg_obj_bbox[0] + fg_obj_bbox[1]) / 2
-        size = fg_obj_bbox[1] - fg_obj_bbox[0]
-        bbox = o3d.geometry.OrientedBoundingBox(center=center, R=np.eye(3), extent=size)
+        while True:
+            print(bcolors.WARNING + "Check if the desired object is inside the bounding box" + bcolors.ENDC)
+            print(f"  min (x y z): {fg_obj_bbox[0]}")
+            print(f"  max (x y z): {fg_obj_bbox[1]}")
 
-        o3d.visualization.draw_geometries([scene_pcd, bbox])
+            center = (fg_obj_bbox[0] + fg_obj_bbox[1]) / 2
+            size = fg_obj_bbox[1] - fg_obj_bbox[0]
+            bbox = o3d.geometry.OrientedBoundingBox(center=center, R=np.eye(3), extent=size)
+            o3d.visualization.draw_geometries([scene_pcd, bbox])
+
+            new_min = input("New min (x y z, space-separated) or Enter to accept: ").strip()
+            if new_min:
+                fg_obj_bbox[0] = np.array([float(v) for v in new_min.split()])
+
+            new_max = input("New max (x y z, space-separated) or Enter to accept: ").strip()
+            if new_max:
+                fg_obj_bbox[1] = np.array([float(v) for v in new_max.split()])
+
+            if not new_min and not new_max:
+                break
 
     # Create a subset of Gaussians
     bounded_xyz = gaussians.get_xyz
@@ -117,6 +133,11 @@ def select_gs_for_phys(dataset : ModelParams,
                     ((bounded_xyz[:, 1] > fg_obj_bbox[0, 1]) & (bounded_xyz[:, 1] < fg_obj_bbox[1, 1])) & \
                     ((bounded_xyz[:, 2] > fg_obj_bbox[0, 2]) & (bounded_xyz[:, 2] < fg_obj_bbox[1, 2]))
     bounded_xyz = bounded_xyz[within_bbox]
+
+    print("Points in bbox:", within_bbox.sum().item())
+    print("XYZ min:", bounded_xyz.min(dim=0).values.cpu().numpy())
+    print("XYZ max:", bounded_xyz.max(dim=0).values.cpu().numpy())
+
     bounded_xyz_np = bounded_xyz.cpu().numpy()
     current_idx = torch.arange(gaussians.get_xyz.shape[0])[within_bbox.cpu()]
     bounded_features = gaussians.get_distill_features[within_bbox]
@@ -156,6 +177,11 @@ def select_gs_for_phys(dataset : ModelParams,
                     break
                 object_select_eps = provided_eps
     else:
+        selected_xyz = bounded_xyz[selected_obj_idx]
+        print("Selected cluster XYZ min:", selected_xyz.min(dim=0).values.cpu().numpy())
+        print("Selected cluster XYZ max:", selected_xyz.max(dim=0).values.cpu().numpy())
+        print("Selected cluster size:", selected_obj_idx.sum())
+        
         selected_obj_idx = clip_segmeter.cluster_instance(bounded_xyz_np,
                                                         selected_obj_idx,
                                                         eps=object_select_eps)
